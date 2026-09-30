@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import get_current_user
-from ..models import Employee, LeaveRequest, User
+from ..models import Employee, LeaveRequest, LeaveType, User
 
 
 router = APIRouter(
@@ -40,10 +40,37 @@ def create_leave_request(
             detail="Employee profile not found"
         )
 
+    leave_type = (
+        db.query(LeaveType)
+        .filter(LeaveType.id == request.leave_type_id)
+        .first()
+    )
+
+    if leave_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Leave type not found"
+        )
+
     if request.from_date > request.to_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="From date cannot be after to date"
+        )
+
+    # Calculate number of requested days
+    requested_days = (
+        request.to_date - request.from_date
+    ).days + 1
+
+    # Check leave allowance
+    if requested_days > leave_type.default_days:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Leave request exceeds the allowed "
+                f"{leave_type.default_days} days"
+            )
         )
 
     leave_request = LeaveRequest(
@@ -66,6 +93,8 @@ def create_leave_request(
         "leave_type_id": leave_request.leave_type_id,
         "from_date": leave_request.from_date,
         "to_date": leave_request.to_date,
+        "requested_days": requested_days,
+        "allowed_days": leave_type.default_days,
         "reason": leave_request.reason,
         "status": leave_request.status
     }
