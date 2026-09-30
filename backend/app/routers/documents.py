@@ -140,3 +140,107 @@ def upload_document(
         "uploaded_at": document.uploaded_at
     }
 
+@router.get("/my")
+def list_my_documents(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Find employee profile
+    employee = (
+        db.query(Employee)
+        .filter(Employee.user_id == current_user.id)
+        .first()
+    )
+
+    if employee is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee profile not found"
+        )
+
+    # Get documents belonging to this employee
+    documents = (
+        db.query(Document)
+        .filter(Document.employee_id == employee.id)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+
+    return {
+        "employee_id": employee.id,
+        "documents": [
+            {
+                "document_id": document.id,
+                "leave_request_id": document.leave_request_id,
+                "file_name": document.file_name,
+                "s3_key": document.s3_key,
+                "uploaded_at": document.uploaded_at
+            }
+            for document in documents
+        ]
+    }
+@router.get("/{document_id}/download")
+def download_document(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Check S3 configuration
+    if not S3_BUCKET_NAME:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="S3 bucket is not configured"
+        )
+
+    # Find employee profile
+    employee = (
+        db.query(Employee)
+        .filter(Employee.user_id == current_user.id)
+        .first()
+    )
+
+    if employee is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee profile not found"
+        )
+
+    # Find document belonging to this employee
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.employee_id == employee.id
+        )
+        .first()
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    try:
+        # Generate temporary download URL
+        download_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": S3_BUCKET_NAME,
+                "Key": document.s3_key
+            },
+            ExpiresIn=300
+        )
+
+    except (BotoCoreError, ClientError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate download URL"
+        ) from exc
+
+    return {
+        "document_id": document.id,
+        "file_name": document.file_name,
+        "download_url": download_url,
+        "expires_in": 300
+    }
