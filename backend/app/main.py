@@ -21,10 +21,6 @@ app.include_router(auth.router)
 app.include_router(employees.router)
 app.include_router(leaves.router)
 app.include_router(manager.router)
-app.include_router(auth.router)
-app.include_router(employees.router)
-app.include_router(leaves.router)
-app.include_router(manager.router)
 
 @app.get("/")
 def root():

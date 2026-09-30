@@ -28,6 +28,7 @@ def create_leave_request(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Find employee profile
     employee = (
         db.query(Employee)
         .filter(Employee.user_id == current_user.id)
@@ -40,6 +41,7 @@ def create_leave_request(
             detail="Employee profile not found"
         )
 
+    # Find leave type
     leave_type = (
         db.query(LeaveType)
         .filter(LeaveType.id == request.leave_type_id)
@@ -52,27 +54,71 @@ def create_leave_request(
             detail="Leave type not found"
         )
 
+    # Validate dates
     if request.from_date > request.to_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="From date cannot be after to date"
         )
 
-    # Calculate number of requested days
+    # Calculate requested leave days
     requested_days = (
         request.to_date - request.from_date
     ).days + 1
+    # Check for overlapping pending or approved leave requests
+    overlapping_leave = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.employee_id == employee.id,
+            LeaveRequest.leave_type_id == request.leave_type_id,
+            LeaveRequest.status.in_(["pending", "approved"]),
+            LeaveRequest.from_date <= request.to_date,
+            LeaveRequest.to_date >= request.from_date
+        )
+        .first()
+    )
 
-    # Check leave allowance
-    if requested_days > leave_type.default_days:
+    if overlapping_leave:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"Leave request exceeds the allowed "
-                f"{leave_type.default_days} days"
+                "Leave request overlaps with an existing "
+                "pending or approved leave request"
             )
         )
 
+    # Calculate already used approved leave days
+    approved_leaves = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.employee_id == employee.id,
+            LeaveRequest.leave_type_id == request.leave_type_id,
+            LeaveRequest.status == "approved"
+        )
+        .all()
+    )
+
+    used_days = sum(
+        (leave.to_date - leave.from_date).days + 1
+        for leave in reserved_leaves
+    )
+
+    # Calculate remaining leave balance
+    remaining_days = leave_type.default_days - used_days
+
+    # Check remaining leave balance
+    if requested_days > remaining_days:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Insufficient leave balance. "
+                f"Used: {used_days} days, "
+                f"Remaining: {remaining_days} days, "
+                f"Requested: {requested_days} days"
+            )
+        )
+
+    # Create leave request
     leave_request = LeaveRequest(
         employee_id=employee.id,
         leave_type_id=request.leave_type_id,
@@ -94,17 +140,20 @@ def create_leave_request(
         "from_date": leave_request.from_date,
         "to_date": leave_request.to_date,
         "requested_days": requested_days,
+        "used_days": used_days,
+        "remaining_days": remaining_days - requested_days,
         "allowed_days": leave_type.default_days,
         "reason": leave_request.reason,
         "status": leave_request.status
     }
 
 
-@router.get("/my")
-def get_my_leave_requests(
+@router.get("/balance")
+def get_leave_balance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Find employee profile
     employee = (
         db.query(Employee)
         .filter(Employee.user_id == current_user.id)
@@ -117,6 +166,84 @@ def get_my_leave_requests(
             detail="Employee profile not found"
         )
 
+    # Get all leave types
+    leave_types = (
+        db.query(LeaveType)
+        .order_by(LeaveType.id)
+        .all()
+    )
+
+    balances = []
+
+    for leave_type in leave_types:
+
+        # Get approved and pending leave requests
+        reserved_leaves = (
+            db.query(LeaveRequest)
+            .filter(
+                LeaveRequest.employee_id == employee.id,
+                LeaveRequest.leave_type_id == leave_type.id,
+                LeaveRequest.status.in_(["approved", "pending"])
+            )
+            .all()
+        )
+
+        # Calculate reserved days
+        reserved_days = sum(
+            (leave.to_date - leave.from_date).days + 1
+            for leave in reserved_leaves
+        )
+
+        # Calculate remaining days
+        remaining_days = max(
+            leave_type.default_days - reserved_days,
+            0
+        )
+        # Calculate used days
+        used_days = sum(
+            (leave.to_date - leave.from_date).days + 1
+            for leave in reserved_leaves
+        )
+
+        # Calculate remaining days
+        remaining_days = max(
+            leave_type.default_days - used_days,
+            0
+        )
+
+        balances.append({
+            "leave_type_id": leave_type.id,
+            "leave_type": leave_type.name,
+            "allowed_days": leave_type.default_days,
+            "used_days": reserved_days,
+            "remaining_days": remaining_days
+        })
+
+    return {
+        "employee_id": employee.id,
+	        "balances": balances
+    }
+
+
+@router.get("/my")
+def get_my_leave_requests(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Find employee profile
+    employee = (
+        db.query(Employee)
+        .filter(Employee.user_id == current_user.id)
+        .first()
+    )
+
+    if employee is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee profile not found"
+        )
+
+    # Get employee leave requests
     leave_requests = (
         db.query(LeaveRequest)
         .filter(LeaveRequest.employee_id == employee.id)
