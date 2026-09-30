@@ -20,3 +20,4 @@ dist/
 
 *.pem
 *.key
+backend/.env
