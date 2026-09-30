@@ -100,7 +100,7 @@ def create_leave_request(
 
     used_days = sum(
         (leave.to_date - leave.from_date).days + 1
-        for leave in reserved_leaves
+        for leave in approved_leaves
     )
 
     # Calculate remaining leave balance
@@ -177,7 +177,24 @@ def get_leave_balance(
 
     for leave_type in leave_types:
 
-        # Get approved and pending leave requests
+        # Get approved leave requests
+        approved_leaves = (
+            db.query(LeaveRequest)
+            .filter(
+                LeaveRequest.employee_id == employee.id,
+                LeaveRequest.leave_type_id == leave_type.id,
+                LeaveRequest.status == "approved"
+            )
+            .all()
+        )
+
+        # Calculate used approved leave days
+        used_days = sum(
+            (leave.to_date - leave.from_date).days + 1
+            for leave in approved_leaves
+        )
+
+        # Get pending and approved leave requests
         reserved_leaves = (
             db.query(LeaveRequest)
             .filter(
@@ -199,26 +216,20 @@ def get_leave_balance(
             leave_type.default_days - reserved_days,
             0
         )
-        # Calculate used days
-        used_days = sum(
-            (leave.to_date - leave.from_date).days + 1
-            for leave in approved_leaves
-        )
 
         balances.append({
             "leave_type_id": leave_type.id,
             "leave_type": leave_type.name,
             "allowed_days": leave_type.default_days,
-            "used_days": reserved_days,
+            "used_days": used_days,
+            "reserved_days": reserved_days,
             "remaining_days": remaining_days
         })
 
     return {
         "employee_id": employee.id,
-	        "balances": balances
+        "balances": balances
     }
-
-
 @router.get("/my")
 def get_my_leave_requests(
     current_user: User = Depends(get_current_user),

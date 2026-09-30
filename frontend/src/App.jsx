@@ -4,8 +4,18 @@ import "./App.css";
 
 function App() {
   const [dashboard, setDashboard] = useState(null);
+  const [leaveTypes, setLeaveTypes] = useState([]);
+
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [leaveTypeId, setLeaveTypeId] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [reason, setReason] = useState("");
 
   const loadDashboard = async () => {
     try {
@@ -18,8 +28,15 @@ function App() {
       } else {
         setError("Unable to load employee dashboard.");
       }
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const loadLeaveTypes = async () => {
+    try {
+      const response = await api.get("/api/leaves/balance");
+      setLeaveTypes(response.data.balances || []);
+    } catch (err) {
+      setError("Unable to load leave types.");
     }
   };
 
@@ -32,8 +49,65 @@ function App() {
       return;
     }
 
-    loadDashboard();
+    const loadData = async () => {
+      await Promise.all([
+        loadDashboard(),
+        loadLeaveTypes(),
+      ]);
+
+      setLoading(false);
+    };
+
+    loadData();
   }, []);
+
+  const handleSubmitLeave = async (event) => {
+    event.preventDefault();
+
+    setMessage("");
+    setError("");
+
+    if (!leaveTypeId || !fromDate || !toDate) {
+      setError("Please complete all required fields.");
+      return;
+    }
+
+    if (fromDate > toDate) {
+      setError("From date cannot be after to date.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await api.post("/api/leaves/", {
+        leave_type_id: Number(leaveTypeId),
+        from_date: fromDate,
+        to_date: toDate,
+        reason: reason || null,
+      });
+
+      setMessage(
+        `${response.data.message} Request ID: ${response.data.leave_request_id}`
+      );
+
+      setLeaveTypeId("");
+      setFromDate("");
+      setToDate("");
+      setReason("");
+
+      await loadDashboard();
+      await loadLeaveTypes();
+    } catch (err) {
+      if (err.response?.data?.detail) {
+        setError(err.response.data.detail);
+      } else {
+        setError("Unable to submit leave request.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
@@ -50,7 +124,7 @@ function App() {
     );
   }
 
-  if (error) {
+  if (error && !dashboard) {
     return (
       <div className="dashboard-page">
         <div className="error-card">
@@ -79,11 +153,13 @@ function App() {
       </header>
 
       <main className="dashboard-container">
+
         <section className="welcome-card">
           <div>
             <h2>
               Welcome, {employee.full_name || employee.username || "Employee"}
             </h2>
+
             <p>
               Manage your leave requests and monitor your leave balance.
             </p>
@@ -96,7 +172,9 @@ function App() {
           <div className="employee-grid">
             <div>
               <span>Employee ID</span>
-              <strong>{employee.employee_id || employee.id || "-"}</strong>
+              <strong>
+                {employee.employee_id || employee.id || "-"}
+              </strong>
             </div>
 
             <div>
@@ -164,6 +242,116 @@ function App() {
           </div>
         </section>
 
+        <section className="leave-form-card">
+          <h2>Request Leave</h2>
+
+          <form onSubmit={handleSubmitLeave}>
+
+            <div className="form-grid">
+
+              <div className="form-group">
+                <label htmlFor="leaveType">
+                  Leave Type
+                </label>
+
+                <select
+                  id="leaveType"
+                  value={leaveTypeId}
+                  onChange={(event) =>
+                    setLeaveTypeId(event.target.value)
+                  }
+                  required
+                >
+                  <option value="">
+                    Select leave type
+                  </option>
+
+                  {leaveTypes.map((leaveType) => (
+                    <option
+                      key={leaveType.leave_type_id}
+                      value={leaveType.leave_type_id}
+                    >
+                      {leaveType.leave_type} (
+                      {leaveType.remaining_days} days remaining)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="fromDate">
+                  From Date
+                </label>
+
+                <input
+                  id="fromDate"
+                  type="date"
+                  value={fromDate}
+                  onChange={(event) =>
+                    setFromDate(event.target.value)}
+		   min={new Date().toISOString().split("T")[0]}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="toDate">
+                  To Date
+                </label>
+
+		<input
+		  id="toDate"
+		  type="date"
+		  value={toDate}
+		 onChange={(event) => setToDate(event.target.value)}
+		  min={fromDate || new Date().toISOString().split("T")[0]}
+		  required
+		/>
+              </div>
+
+              <div className="form-group form-group-full">
+                <label htmlFor="reason">
+                  Reason
+                </label>
+
+                <textarea
+                  id="reason"
+                  rows="4"
+                  placeholder="Enter reason for leave"
+                  value={reason}
+                  onChange={(event) =>
+                    setReason(event.target.value)
+                  }
+                />
+              </div>
+
+            </div>
+
+            <button
+              type="submit"
+              className="submit-leave-button"
+              disabled={submitting}
+            >
+              {submitting
+                ? "Submitting..."
+                : "Submit Leave Request"}
+            </button>
+
+          </form>
+
+          {message && (
+            <div className="success-message">
+              {message}
+            </div>
+          )}
+
+          {error && (
+            <div className="form-error-message">
+              {error}
+            </div>
+          )}
+        </section>
+
         <section className="requests-card">
           <h2>Recent Leave Requests</h2>
 
@@ -195,7 +383,9 @@ function App() {
                       <td>{request.total_days || 0}</td>
                       <td>
                         <span
-                          className={`status status-${request.status || "unknown"}`}
+                          className={`status status-${
+                            request.status || "unknown"
+                          }`}
                         >
                           {request.status || "Unknown"}
                         </span>
@@ -207,6 +397,7 @@ function App() {
             </div>
           )}
         </section>
+
       </main>
     </div>
   );
