@@ -202,13 +202,7 @@ def get_leave_balance(
         # Calculate used days
         used_days = sum(
             (leave.to_date - leave.from_date).days + 1
-            for leave in reserved_leaves
-        )
-
-        # Calculate remaining days
-        remaining_days = max(
-            leave_type.default_days - used_days,
-            0
+            for leave in approved_leaves
         )
 
         balances.append({
