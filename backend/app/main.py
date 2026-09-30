@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, employees, leaves
+from app.routers import auth, employees, leaves, manager
 
 app = FastAPI(
     title="Employee Leave Management API",
@@ -20,7 +20,11 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(employees.router)
 app.include_router(leaves.router)
-
+app.include_router(manager.router)
+app.include_router(auth.router)
+app.include_router(employees.router)
+app.include_router(leaves.router)
+app.include_router(manager.router)
 
 @app.get("/")
 def root():
