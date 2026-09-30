@@ -17,7 +17,67 @@ class LeaveDecision(BaseModel):
     status: str
     manager_comment: str | None = None
 
+@router.get("/dashboard")
+def get_manager_dashboard(
+    current_manager: User = Depends(get_current_manager),
+    db: Session = Depends(get_db)
+):
+    # Get all leave requests
+    leave_requests = (
+        db.query(LeaveRequest)
+        .order_by(LeaveRequest.created_at.desc())
+        .all()
+    )
 
+    # Calculate request statistics
+    total_requests = len(leave_requests)
+
+    pending_count = sum(
+        1 for leave in leave_requests
+        if leave.status == "pending"
+    )
+
+    approved_count = sum(
+        1 for leave in leave_requests
+        if leave.status == "approved"
+    )
+
+    rejected_count = sum(
+        1 for leave in leave_requests
+        if leave.status == "rejected"
+    )
+
+    # Get recent pending requests
+    pending_requests = [
+        {
+            "leave_request_id": leave.id,
+            "employee_id": leave.employee_id,
+            "leave_type_id": leave.leave_type_id,
+            "from_date": leave.from_date,
+            "to_date": leave.to_date,
+            "reason": leave.reason,
+            "status": leave.status,
+            "created_at": leave.created_at
+        }
+        for leave in leave_requests
+        if leave.status == "pending"
+    ][:5]
+
+    return {
+        "manager": {
+            "user_id": current_manager.id,
+            "username": current_manager.username,
+            "email": current_manager.email,
+            "role": current_manager.role
+        },
+        "leave_summary": {
+            "total_requests": total_requests,
+            "pending": pending_count,
+            "approved": approved_count,
+            "rejected": rejected_count
+        },
+        "recent_pending_requests": pending_requests
+    }
 @router.get("/leaves")
 def get_pending_leave_requests(
     current_manager: User = Depends(get_current_manager),
