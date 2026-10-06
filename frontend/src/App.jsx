@@ -6,7 +6,6 @@ function App() {
   const [loginMode, setLoginMode] = useState(
     !localStorage.getItem("access_token")
   );
-
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -290,6 +289,7 @@ function App() {
   const employee = dashboard?.employee || {};
   const leaveSummary = dashboard?.leave_summary || {};
   const recentRequests = dashboard?.recent_requests || [];
+ 
 
   return (
     <div className="dashboard-page">
@@ -690,44 +690,48 @@ function App() {
                     <th>Status</th>
                   </tr>
                 </thead>
+		<tbody>
+  {recentRequests.map((request, index) => (
+    <tr
+      key={`recent-request-${request.leave_request_id || request.id || index}`}
+    >
+      <td>
+        {request.id ||
+          request.leave_request_id ||
+          "-"}
+      </td>
 
-                <tbody>
-                  {recentRequests.map((request) => (
-                    <tr key={request.id}>
-                      <td>{request.id}</td>
+      <td>
+        {request.leave_type || "-"}
+      </td>
 
-                      <td>
-                        {request.leave_type || "-"}
-                      </td>
+      <td>
+        {request.start_date || "-"}
+      </td>
 
-                      <td>
-                        {request.start_date || "-"}
-                      </td>
+      <td>
+        {request.end_date || "-"}
+      </td>
 
-                      <td>
-                        {request.end_date || "-"}
-                      </td>
+      <td>
+        {request.total_days || 0}
+      </td>
 
-                      <td>
-                        {request.total_days || 0}
-                      </td>
-
-                      <td>
-                        <span
-                          className={"status status-" + (request.status || "unknown")}
-                        >
-                          {request.status ||
-                            "Unknown"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      <td>
+        <span
+          className={`status status-${
+            request.status || "unknown"
+          }`}
+        >
+          {request.status || "Unknown"}
+        </span>
+      </td>
+    </tr>
+  ))}
+</tbody>            
+      </table>
+            </div> )}
         </section>
-
       </main>
     </div>
   );
